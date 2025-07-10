@@ -1,0 +1,49 @@
+void batteryfunction() {
+
+  if (millis() - batteryPrevMillis > batteryInterval) {
+
+    int adc = analogRead(ADC_PIN);
+    float batteryVoltage = ((float)adc / 4095.0) * 2.0 * 3.3 * (VREF / 1000.0);
+
+    tft.fillRect(0, 111, 90, 25, TFT_DARKGREY); //clear screen for battery
+    if (batteryVoltage > 4.1) {
+      tft.fillRect(4, 116, 26, 14, TFT_BLACK);
+      tft.fillRect(6, 118, 22, 10, TFT_BLUE);
+      tft.fillRect(29, 120, 3, 6, TFT_BLACK);
+      tft.setFreeFont(FF17);
+      tft.setTextColor(TFT_BLACK);
+      tft.setCursor(12, 127); // Row 6
+      tft.print("c");
+    }
+    else {
+      batteryVoltage = constrain(batteryVoltage, 3, 4);
+      float batteryPercent = +((batteryVoltage - 3) / 1) * 100;
+      if (batteryPercent < 25) {
+        tft.fillRect(4, 116, 26, 14, TFT_BLACK);
+        tft.fillRect(6, 118, 22, 10, TFT_DARKGREY);
+        tft.fillRect(6, 118, 5.5, 10, TFT_RED);
+        tft.fillRect(29, 120, 3, 6, TFT_BLACK);
+      }
+      else if (batteryPercent < 50) {
+        tft.fillRect(4, 116, 26, 14, TFT_BLACK);
+        tft.fillRect(6, 118, 22, 10, TFT_DARKGREY);
+        tft.fillRect(6, 118, 11, 10, TFT_YELLOW);
+        tft.fillRect(29, 120, 3, 6, TFT_BLACK);
+      }
+      else if (batteryPercent < 70) {
+        tft.fillRect(4, 116, 26, 14, TFT_BLACK);
+        tft.fillRect(6, 118, 22, 10, TFT_DARKGREY);
+        tft.fillRect(6, 118, 16.5, 10, TFT_GREEN);
+        tft.fillRect(29, 120, 3, 6, TFT_BLACK);
+      }
+      else {
+        tft.fillRect(4, 116, 26, 14, TFT_BLACK);
+        tft.fillRect(6, 118, 22, 10, TFT_GREEN);
+        tft.fillRect(29, 120, 3, 6, TFT_BLACK);
+      }
+    }
+
+    batteryPrevMillis = millis();
+  }
+
+}

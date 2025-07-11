@@ -1,0 +1,11 @@
+void drawBootScreen() {
+        clearScreen();
+        tft.setTextColor(TFT_WHITE);
+        tft.setFreeFont(FONT_MEDIUM);
+        
+        // Center text
+        tft.setCursor(20, 60);
+        tft.print("Kush Effect . CO");
+        tft.setCursor(30, 90);
+        tft.print("Dab Alarm");
+    }

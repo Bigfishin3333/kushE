@@ -24,6 +24,7 @@ public:
         constexpr static uint8_t BUZZER_PIN = 25;
         constexpr static uint8_t BUTTON_UP_PIN = 35;
         constexpr static uint8_t BUTTON_LOW_PIN = 0;
+        constexpr static uint8_t ADC_PIN = 34;
     };
 
     struct DisplaySettings {
@@ -81,7 +82,12 @@ public:
 #define FONT_SMALL &FreeSans9pt7b
 #define FONT_MEDIUM &FreeSansBold12pt7b
 #define FONT_LARGE &FreeSansBold18pt7b
+#define FF17 &FreeSans9pt7b
+const int ADC_PIN = 34;
 
+long batteryPrevMillis = 0;
+int batteryInterval = 400;
+const int VREF = 1100;
 // =====================================================================
 // Main DabAlarm Class
 // =====================================================================
@@ -95,28 +101,39 @@ public:
         buttonLow(DabAlarmConfig::HardwareSettings::BUTTON_LOW_PIN) {}
 
     void begin() {
-        // Initialize serial for debugging
-        Serial.begin(115200);
-        
-        // Initialize display first and keep it black
-        tft.init();
-        tft.setRotation(1);
-        tft.fillScreen(TFT_BLACK);
-        
-        // Initialize other hardware components
-        initializeHardware();
-        
-        // Load saved settings
-        loadSavedSettings();
-        
-        // Show boot screen immediately after hardware init
-        drawBootScreen();
-        delay(2500);
-        
-        // Draw main screen only after boot sequence
-        drawMainScreen();
-    }
-
+    // Initialize serial for debugging
+    Serial.begin(115200);
+    
+    // Initialize display first and keep it black
+    tft.init();
+    tft.setRotation(1);
+    tft.fillScreen(TFT_BLACK);
+    delay(300);
+    // Set initial display settings to prevent random flashing
+    tft.setTextColor(TFT_WHITE);
+    tft.setTextSize(1);
+    
+    // Delay briefly to prevent initial screen flash
+    delay(100);
+    
+    // Initialize other hardware components
+    initializeHardware();
+    
+    // Load saved settings
+    loadSavedSettings();
+    
+    // Clear screen completely before boot screen
+    clearScreen();
+    
+    // Show boot screen
+    
+    
+    // Clear screen again before main screen
+    clearScreen();
+    
+    // Draw main screen
+    drawMainScreen();
+}
     void update() {
         // Update button states
         buttonUp.loop();
@@ -128,13 +145,19 @@ public:
             updateTemperature();
             lastTempUpdate = millis();
         }
-        
+        static bool mainScreenInitialized = false;
+        batteryfunction();
         // Handle menu and interaction
         handleMenuInteraction();
         
         // Check temperature alarms
         checkTemperatureAlarms();
-        
+
+        if (!mainScreenInitialized) {
+        drawMainScreen();
+        mainScreenInitialized = true;
+        return;  // Exit after first initialization
+    }
         // Update display if needed - only update specific parts instead of full redraw
         static int lastDisplayTemp = -1;
         static bool lastMuteState = false;
@@ -199,6 +222,7 @@ private:
     MenuState currentMenu = MenuState::MAIN_SCREEN;
     int menuIndex = 0;
     unsigned long lastMenuAction = 0;
+    unsigned long buttonPressTime = 0;  // Added missing variable declaration
 
     // =====================================================================
     // Initialization Methods
@@ -223,7 +247,62 @@ private:
         // Initialize buzzer
         pinMode(DabAlarmConfig::HardwareSettings::BUZZER_PIN, OUTPUT);
     }
+void batteryfunction() {
 
+  if (millis() - batteryPrevMillis > batteryInterval) {
+
+    int adc = analogRead(ADC_PIN);
+    float batteryVoltage = ((float)adc / 4095.0) * 2.0 * 3.3 * (VREF / 1000.0);
+
+     
+     if (batteryVoltage > 4.1) {
+            tft.fillRect(4, 116, 26, 14, TFT_BLACK);
+            tft.fillRect(6, 118, 22, 10, TFT_GREEN);
+            tft.fillRect(29, 120, 3, 6, TFT_BLACK);
+        } else {
+      batteryVoltage = constrain(batteryVoltage, 3, 4);
+      float batteryPercent = +((batteryVoltage - 3) / 1) * 100;
+      if (batteryPercent < 25) {
+    static bool flashState = false;
+    static unsigned long lastFlashTime = 0;
+    
+    if (millis() - lastFlashTime > 500) {  // Toggle flash every 500ms
+        flashState = !flashState;
+        lastFlashTime = millis();
+    }
+    
+    tft.fillRect(4, 116, 26, 14, TFT_BLACK);
+    tft.fillRect(6, 118, 22, 10, TFT_DARKGREY);
+    
+    if (flashState) {
+        tft.fillRect(6, 118, 5.5, 10, TFT_RED);
+    }
+    
+    tft.fillRect(29, 120, 3, 6, TFT_BLACK);
+}
+      else if (batteryPercent < 25) {
+        tft.fillRect(4, 116, 26, 14, TFT_BLACK);
+        tft.fillRect(6, 118, 22, 10, TFT_DARKGREY);
+        tft.fillRect(6, 118, 11, 10, TFT_YELLOW);
+        tft.fillRect(29, 120, 3, 6, TFT_BLACK);
+      }
+      else if (batteryPercent < 60) {
+        tft.fillRect(4, 116, 26, 14, TFT_BLACK);
+        tft.fillRect(6, 118, 22, 10, TFT_DARKGREY);
+        tft.fillRect(6, 118, 16.5, 10, TFT_YELLOW);
+        tft.fillRect(29, 120, 3, 6, TFT_BLACK);
+      }
+      else {
+        tft.fillRect(4, 116, 26, 14, TFT_BLACK);
+        tft.fillRect(6, 118, 22, 10, TFT_GREEN);
+        tft.fillRect(29, 120, 3, 6, TFT_BLACK);
+      }
+    }
+
+    batteryPrevMillis = millis();
+  }
+
+}
     void loadSavedSettings() {
         // Load saved temperatures with validation
         state.dabTemp = loadTemperature(
@@ -247,65 +326,59 @@ private:
         tft.fillScreen(TFT_BLACK);
     }
 
-    void drawBootScreen() {
-        clearScreen();
-        tft.setTextColor(TFT_WHITE);
-        tft.setFreeFont(FONT_MEDIUM);
-        
-        // Center text
-        tft.setCursor(20, 60);
-        tft.print("Kush Effect .CO");
-        tft.setCursor(30, 90);
-        tft.print("Pocket Temper");
-    }
+    
 
-    void drawMainScreen() {
-        clearScreen();
-        
-        // Draw top banner
-        tft.fillRect(0, 0, DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 25, TFT_BLUE);
-        
-        // Banner text - centered
-        tft.setTextColor(TFT_WHITE);
-        tft.setFreeFont(FONT_SMALL);
-        
-        String bannerText = "Kush Effects Dab Alarm";
-        int16_t textWidth = tft.textWidth(bannerText);
-        int16_t xPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - textWidth) / 2;
-        
-        tft.setCursor(xPos, 18);
-        tft.print(bannerText);
-        
-        // Draw bottom banner for battery
-        tft.fillRect(0, DabAlarmConfig::DisplaySettings::SCREEN_HEIGHT - 20, DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 20, TFT_DARKGREY);
-       
-        
-        // Temperature display - centered in middle area
-        tft.setFreeFont(FONT_LARGE);
-        tft.setTextColor(TFT_WHITE);
-        
-        // Calculate center position for temperature
-        String tempString = "Temp: " + String(state.currentTemp) + "F";
-        int16_t tempTextWidth = tft.textWidth(tempString);
-        int16_t tempXPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - tempTextWidth) / 2;
-        
-        tft.setCursor(tempXPos, 65);
-        tft.print("Temp: ");
-        tft.print(state.currentTemp);
-        tft.print("F");
-        
-        // Target temperatures - adjusted position
-        tft.setFreeFont(FONT_SMALL);
-        tft.setCursor(15, 90);
-        tft.print("Dab: ");
-        tft.print(state.dabTemp);
-        tft.print("F  Dunk: ");
-        tft.print(state.dunkTemp);
-        tft.print("F");
-        
-        // Status indicator - moved up above bottom banner
-        drawTemperatureStatus();
-    }
+   void drawMainScreen() {
+    clearScreen();
+    
+    // Draw top banner
+    tft.fillRect(0, 0, DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 25, TFT_BLUE);
+    
+    // Banner text - centered
+    tft.setTextColor(TFT_WHITE);
+    tft.setFreeFont(FONT_SMALL);
+    
+    String bannerText = "Kush Effect Dab Alarm";
+    int16_t textWidth = tft.textWidth(bannerText);
+    int16_t xPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - textWidth) / 2;
+    
+    tft.setCursor(xPos, 18);
+    tft.print(bannerText);
+    
+    // Draw bottom banner ALWAYS
+    tft.fillRect(0, DabAlarmConfig::DisplaySettings::SCREEN_HEIGHT - 20, 
+                 DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 20, TFT_DARKGREY);
+    
+    // Rest of the main screen drawing...
+    // (temperature display, etc.)
+    
+    // Force a complete redraw of all screen elements
+    tft.setFreeFont(FONT_LARGE);
+    tft.setTextColor(TFT_WHITE);
+    
+    String tempString = "Temp: " + String(state.currentTemp) + "F";
+    int16_t tempTextWidth = tft.textWidth(tempString);
+    int16_t tempXPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - tempTextWidth) / 2;
+    
+    tft.setCursor(tempXPos, 65);
+    tft.print(tempString);
+    
+    // Target temperatures
+    tft.setFreeFont(FONT_SMALL);
+    tft.setCursor(30, 90);
+    tft.print("Dab: ");
+    tft.print(state.dabTemp);
+    tft.print("F  Dunk: ");
+    tft.print(state.dunkTemp);
+    tft.print("F");
+    
+    // Status indicator
+    drawTemperatureStatus();
+
+    // Combine battery and mute status in bottom banner
+    updateBottomBanner();
+}
+
 
     void updateTemperatureDisplay() {
         // Clear only the temperature area
@@ -323,34 +396,17 @@ private:
         tft.print("Temp: ");
         tft.print(state.currentTemp);
         tft.print("F");
+        
     }
 
     void updateTemperatureStatus() {
         // Clear only the status area
-        tft.fillRect(10, 100, 220, 15, TFT_BLACK);
+        tft.fillRect(10, 95, 220, 20, TFT_BLACK);
         
         tft.setFreeFont(FONT_SMALL);
         
         int dabDiff = abs(state.currentTemp - state.dabTemp);
         int dunkDiff = abs(state.currentTemp - state.dunkTemp);
-        
-        // Check for flashing conditions (within ±15 degrees for better range)
-        static unsigned long lastFlashTime = 0;
-        
-        // Flash green when approaching dab temp (within ±15 degrees but not exactly ready)
-        if (dabDiff <= 15 && dabDiff > 5) {
-            if (millis() - lastFlashTime > 8000) {  // Flash every 8 seconds (allows time for 3x flashes)
-                flashScreen(TFT_GREEN);
-                lastFlashTime = millis();
-            }
-        } 
-        // Flash red when approaching dunk temp (within ±15 degrees but not exactly ready)
-        else if (dunkDiff <= 15 && dunkDiff > 5) {
-            if (millis() - lastFlashTime > 8000) {  // Flash every 8 seconds
-                flashScreen(TFT_RED);
-                lastFlashTime = millis();
-            }
-        }
         
         // Show text status
         tft.setCursor(15, 110);
@@ -385,63 +441,80 @@ private:
             tft.print("DAB READY!");
         } else if (dunkDiff <= 5) {
             tft.setTextColor(TFT_YELLOW);
-            tft.print("ALERT READY!");
+            tft.print("Dunk READY!");
         } else if (state.currentTemp > state.dabTemp + 30) {
             tft.setTextColor(TFT_RED);
             tft.print("TOO HOT");
         }
     }
 
-    void updateBottomBanner() {
-        // Clear and redraw only the bottom banner
-        tft.fillRect(0, DabAlarmConfig::DisplaySettings::SCREEN_HEIGHT - 20, DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 20, TFT_DARKGREY);
-    }
+   void updateBottomBanner() {
+    // Draw bottom banner ALWAYS
+    tft.fillRect(0, DabAlarmConfig::DisplaySettings::SCREEN_HEIGHT - 20, 
+                 DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 20, TFT_DARKGREY);
+    
+    // Show battery status
+    int adc = analogRead(ADC_PIN);
+    float batteryVoltage = ((float)adc / 4095.0) * 2.0 * 3.3 * (VREF / 1000.0);
+    batteryVoltage = constrain(batteryVoltage, 3, 4);
+    float batteryPercent = +((batteryVoltage - 3) / 1) * 100;
 
-    void drawmutedInfo() {
-        
-        
-        // Show "MUTED" text only when muted (right side of bottom banner)
-        if (state.isMuted) {
-            String bannerText = "MUTED";
-            int16_t textWidth = tft.textWidth(bannerText);
-            int16_t xPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - textWidth) / 2;
-        
-        
-        
-            tft.setTextColor(TFT_RED);
-            tft.setCursor(xPos, 18);
-            tft.print(bannerText);
-        }
+    // Draw battery indicator on left side
+    tft.fillRect(4, 116, 26, 14, TFT_BLACK);
+    tft.fillRect(6, 118, 22, 10, TFT_DARKGREY);
+    
+    // Color and fill based on battery percentage
+    uint16_t batteryColor = TFT_GREEN;
+    float fillWidth = 22.0 * (batteryPercent / 100.0);
+    
+    if (batteryPercent < 25) {
+        batteryColor = TFT_RED;
+    } else if (batteryPercent < 50) {
+        batteryColor = TFT_YELLOW;
     }
+    
+    tft.fillRect(6, 118, fillWidth, 10, batteryColor);
+    tft.fillRect(29, 120, 3, 6, TFT_BLACK);
 
+    // Show mute status on right side
+    if (state.isMuted) {
+        tft.setTextColor(TFT_RED);
+        tft.setFreeFont(FONT_SMALL);
+        String muteText = "MUTED";
+        int16_t muteWidth = tft.textWidth(muteText);
+        int16_t muteXPos = DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - muteWidth - 5;
+        tft.setCursor(muteXPos, DabAlarmConfig::DisplaySettings::SCREEN_HEIGHT - 5);
+        tft.print(muteText);
+    }
+}
     void drawMenuNavigation() {
         clearScreen();
         
-        // Top banner with instructions - using smaller font
+        // Top banner with instructions
         tft.fillRect(0, 0, DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 25, TFT_BLUE);
         tft.setTextColor(TFT_WHITE);
         tft.setFreeFont(FONT_SMALL);
         
-        String instructionText = "UP: Navigate  LOW: Select";
+        String instructionText = "UP: Navigate  Down: Select";
         int16_t textWidth = tft.textWidth(instructionText);
         int16_t xPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - textWidth) / 2;
         
         tft.setCursor(xPos, 18);
         tft.print(instructionText);
         
-        // Menu items with smaller font and tighter spacing
+        // Menu items with proper sizing and spacing
         const char* menuItems[] = {"Set Dab Temp", "Set Alert Temp", "Toggle Mute"};
         
         for (int i = 0; i < 3; i++) {
-            // Menu item background (highlight selected item) - smaller height
+            // Menu item background (highlight selected item)
             if (i == menuIndex) {
-                tft.fillRect(10, 35 + (i * 25), 220, 20, TFT_DARKGREY);
+                tft.fillRect(10, 35 + (i * 30), 220, 25, TFT_DARKGREY);
             }
             
-            // Menu item text - using FONT_SMALL instead of FONT_MEDIUM
+            // Menu item text - using consistent font
             tft.setTextColor(i == menuIndex ? TFT_GREEN : TFT_WHITE);
-            tft.setFreeFont(FONT_SMALL);
-            tft.setCursor(15, 48 + (i * 25));
+            tft.setFreeFont(FONT_MEDIUM);
+            tft.setCursor(15, 52 + (i * 30));
             tft.print(menuItems[i]);
         }
     }
@@ -449,105 +522,96 @@ private:
     void drawTempAdjustScreen(int temp, bool isDabTemp) {
         clearScreen();
         
-        // Top banner with instructions - using smaller font
+        // Top banner with instructions
         tft.fillRect(0, 0, DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 25, TFT_BLUE);
         tft.setTextColor(TFT_WHITE);
         tft.setFreeFont(FONT_SMALL);
         
-        String instructionText = "UP: +10  LOW: -10  HOLD: Exit";
+        String instructionText = "+/- 5: HOLD: Exit";
         int16_t textWidth = tft.textWidth(instructionText);
         int16_t xPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - textWidth) / 2;
         
         tft.setCursor(xPos, 18);
         tft.print(instructionText);
         
-        // Content area with background - smaller height
-        tft.fillRect(10, 35, 220, 75, TFT_DARKGREY);
+        // Content area with background
+        tft.fillRect(10, 35, 220, 80, TFT_DARKGREY);
         
-        // Title - using smaller font
+        // Title
         tft.setTextColor(TFT_WHITE);
-        tft.setFreeFont(FONT_SMALL);
-        String titleText = isDabTemp ? "Adjust Dab Temperature" : "Adjust Alert Temperature";
+        tft.setFreeFont(FONT_MEDIUM);
+        
+        String titleText = isDabTemp ? "Dab Temp" : "Alert Temp";
         int16_t titleWidth = tft.textWidth(titleText);
         int16_t titleXPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - titleWidth) / 2;
         
-        tft.setCursor(titleXPos, 52);
+        tft.setCursor(titleXPos, 55);
         tft.print(titleText);
         
-        // Temperature value - using medium font instead of large
-        tft.setFreeFont(FONT_MEDIUM);
+        // Temperature value
+        tft.setFreeFont(FONT_LARGE);
         tft.setTextColor(TFT_GREEN);
         String tempText = String(temp) + "F";
         int16_t tempWidth = tft.textWidth(tempText);
         int16_t tempXPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - tempWidth) / 2;
         
-        tft.setCursor(tempXPos, 85);
+        tft.setCursor(tempXPos, 90);
         tft.print(tempText);
     }
 
     void drawMuteToggleScreen() {
         clearScreen();
         
-        // Top banner with instructions - using smaller font
+        // Top banner with instructions
         tft.fillRect(0, 0, DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 25, TFT_BLUE);
         tft.setTextColor(TFT_WHITE);
         tft.setFreeFont(FONT_SMALL);
         
-        String instructionText = "UP/LOW: Toggle  HOLD: Exit";
+        String instructionText = "UP/Down: Toggle  HOLD: Exit";
         int16_t textWidth = tft.textWidth(instructionText);
         int16_t xPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - textWidth) / 2;
         
         tft.setCursor(xPos, 18);
         tft.print(instructionText);
         
-        // Content area with background - smaller height
-        tft.fillRect(10, 35, 220, 75, TFT_DARKGREY);
+        // Content area with background
+        tft.fillRect(10, 35, 220, 80, TFT_BLACK);
         
-        // Title - using smaller font
+        // Title
         tft.setTextColor(TFT_WHITE);
-        tft.setFreeFont(FONT_SMALL);
+        tft.setFreeFont(FONT_MEDIUM);
         String titleText = "Sound Status";
         int16_t titleWidth = tft.textWidth(titleText);
         int16_t titleXPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - titleWidth) / 2;
         
-        tft.setCursor(titleXPos, 52);
+        tft.setCursor(titleXPos, 55);
         tft.print(titleText);
         
-        // Mute status - using medium font instead of large
-        tft.setFreeFont(FONT_MEDIUM);
+        // Mute status
+        tft.setFreeFont(FONT_LARGE);
         tft.setTextColor(state.isMuted ? TFT_RED : TFT_GREEN);
         String statusText = state.isMuted ? "MUTED" : "UNMUTED";
         int16_t statusWidth = tft.textWidth(statusText);
         int16_t statusXPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - statusWidth) / 2;
         
-        tft.setCursor(statusXPos, 85);
+        tft.setCursor(statusXPos, 90);
         tft.print(statusText);
     }
 
     // =====================================================================
-    // Sound and Visual Effects - IMPROVED FLASHING
+    // Sound Effects (No Flashing)
     // =====================================================================
-
-    void flashScreen(uint16_t color) {
-        // Flash the entire screen 3 times with 1.5 second displays
-        for (int flash = 0; flash < 3; flash++) {
-            tft.fillScreen(color);
-            delay(1500);  // Show colored screen for 1.5 seconds
-            drawMainScreen();  // Redraw normal screen
-            delay(300);   // Brief pause between flashes
-        }
-    }
 
     void playDabBeep() {
         if (state.isMuted) return;  // Check mute state before playing
         
         // Mario "1-UP" sound sequence
         const int marioTones[] = {659, 784, 1047, 1319, 1568, 1319, 1568};  // E5, G5, C6, E6, G6, E6, G6
-        const int marioDurations[] = {125, 125, 125, 125, 125, 125, 250};
+        const int marioDurations[] = {125, 125, 125, 135, 125, 125, 250};
         
         for (int i = 0; i < 7; i++) {
             tone(DabAlarmConfig::HardwareSettings::BUZZER_PIN, marioTones[i], marioDurations[i]);
-            delay(marioDurations[i] + 50);
+            delay(marioDurations[i] + 20);
             noTone(DabAlarmConfig::HardwareSettings::BUZZER_PIN);
         }
     }
@@ -586,23 +650,39 @@ private:
         }
     }
 
-    void checkTemperatureAlarms() {
-        bool isCoolingDown = (state.previousTemp > state.currentTemp);
-        
-        if (isCoolingDown) {
-            // Dab temperature alarm
-            if (state.previousTemp > state.dabTemp && 
-                state.currentTemp <= state.dabTemp) {
+   void checkTemperatureAlarms() {
+    static bool dabAlarmPlayed = false;
+    static bool dunkAlarmPlayed = false;
+    
+    bool isCoolingDown = (state.previousTemp > state.currentTemp);
+    int tempDifference = state.previousTemp - state.currentTemp;
+    
+    if (isCoolingDown && tempDifference < 50) {
+        // Dab temperature alarm
+        if (state.previousTemp > (state.dabTemp + 10) && 
+            state.currentTemp <= state.dabTemp) {
+            if (!dabAlarmPlayed) {
                 playDabBeep();
+                dabAlarmPlayed = true;
             }
-            
-            // Dunk temperature alarm
-            if (state.previousTemp > state.dunkTemp && 
-                state.currentTemp <= state.dunkTemp) {
+        } else {
+            // Reset dab alarm flag if temperature goes back up
+            dabAlarmPlayed = false;
+        }
+        
+        // Dunk temperature alarm
+        if (state.previousTemp > (state.dunkTemp + 10) && 
+            state.currentTemp <= state.dunkTemp) {
+            if (!dunkAlarmPlayed) {
                 playDunkBeep();
+                dunkAlarmPlayed = true;
             }
+        } else {
+            // Reset dunk alarm flag if temperature goes back up
+            dunkAlarmPlayed = false;
         }
     }
+}
 
     // =====================================================================
     // Menu Interaction Methods
@@ -636,221 +716,156 @@ private:
     }
 
     void handleMainScreenInteraction() {
-        // Long press on UP button enters menu
+        // Handle UP button
         if (buttonUp.isPressed()) {
-            lastMenuAction = millis();
-        }
-        
-        if (buttonUp.isReleased()) {
-            unsigned long pressDuration = millis() - lastMenuAction;
-            if (pressDuration > DabAlarmConfig::InteractionSettings::LONG_PRESS_DURATION) {
-                // Long press - exit to main screen
-                currentMenu = MenuState::MAIN_SCREEN;
-                drawMainScreen();
-            } else {
-                // Short press - toggle mute
-                state.isMuted = !state.isMuted;
-                saveMuteState(state.isMuted);
-                Serial.print("Mute toggled to: ");
-                Serial.println(state.isMuted ? "MUTED" : "UNMUTED");
-                drawMuteToggleScreen();
-                lastMenuAction = millis();
-            }
-        }
-        
-        // Handle LOW button
-        if (buttonLow.isPressed()) {
             buttonPressTime = millis();
             lastMenuAction = millis();
         }
         
-        if (buttonLow.isReleased()) {
-            unsigned long pressDuration = millis() - buttonPressTime;
-            
-            if (pressDuration > DabAlarmConfig::InteractionSettings::LONG_PRESS_DURATION) {
-                // Long press - exit to main screen
-                currentMenu = MenuState::MAIN_SCREEN;
-                drawMainScreen();
-            } else {
-                // Short press - toggle mute
-                state.isMuted = !state.isMuted;
-                saveMuteState(state.isMuted);
-                Serial.print("Mute toggled to: ");
-                Serial.println(state.isMuted ? "MUTED" : "UNMUTED");
-                drawMuteToggleScreen();
-                lastMenuAction = millis();
-            }
-        }
-    }
-
-    // =====================================================================
-    // EEPROM Helper Functions
-    // =====================================================================
-
-    void saveTemperature(int address, int temp) {
-        try {
-            EEPROM.put(address, temp);
-            EEPROM.commit();
-        } catch (...) {
-            ErrorHandler::handleCriticalError(
-                ErrorHandler::ErrorType::EEPROM_ERROR
-            );
-        }
-    }
-
-    int loadTemperature(int address, int defaultTemp) {
-        int temp;
-        
-        try {
-            EEPROM.get(address, temp);
-            
-            // Validate loaded temperature
-            if (temp < DabAlarmConfig::TemperatureSettings::MIN_TEMP || 
-                temp > DabAlarmConfig::TemperatureSettings::MAX_TEMP) {
-                temp = defaultTemp;
-                saveTemperature(address, temp);
-            }
-            
-            return temp;
-        } catch (...) {
-            ErrorHandler::handleCriticalError(
-                ErrorHandler::ErrorType::EEPROM_ERROR
-            );
-            return defaultTemp;
-        }
-    }
-
-    void saveMuteState(bool muteState) {
-        try {
-            EEPROM.put(DabAlarmConfig::EEPROMAddresses::MUTE_STATE_ADDR, muteState);
-            EEPROM.commit();
-            Serial.print("Saved mute state to EEPROM: ");
-            Serial.println(muteState ? "MUTED" : "UNMUTED");
-        } catch (...) {
-            ErrorHandler::handleCriticalError(
-                ErrorHandler::ErrorType::EEPROM_ERROR
-            );
-        }
-    }
-
-    bool loadMuteState() {
-        bool muteState = false;  // Default to unmuted
-        
-        try {
-            EEPROM.get(DabAlarmConfig::EEPROMAddresses::MUTE_STATE_ADDR, muteState);
-            Serial.print("Loaded mute state from EEPROM: ");
-            Serial.println(muteState ? "MUTED" : "UNMUTED");
-            return muteState;
-        } catch (...) {
-            ErrorHandler::handleCriticalError(
-                ErrorHandler::ErrorType::EEPROM_ERROR
-            );
-            Serial.println("EEPROM error, defaulting to UNMUTED");
-            return false;  // Default to unmuted on error
-        }
-    }
-};  // <-- IMPORTANT: Semicolon after class definition
-
-void handleMainScreenInteraction() {
-        // Long press on UP button enters menu
-        if (buttonUp.isPressed()) {
-            lastMenuAction = millis();
-        }
-        
         if (buttonUp.isReleased()) {
-            unsigned long pressDuration = millis() - lastMenuAction;
+            unsigned long pressDuration = millis() - buttonPressTime;
             if (pressDuration > DabAlarmConfig::InteractionSettings::LONG_PRESS_DURATION) {
+                // Long press - enter menu
                 currentMenu = MenuState::MENU_NAVIGATION;
                 menuIndex = 0;
                 drawMenuNavigation();
-            }
+            } 
         }
+        
+        
+       
     }
 
     void handleMenuNavigationInteraction() {
-        // Navigate menu items
-        if (buttonUp.isPressed()) {
-            menuIndex = (menuIndex + 1) % 3;
-            drawMenuNavigation();
-            lastMenuAction = millis();
-        }
+    // Navigate menu items
+    if (buttonUp.isPressed()) {
+        menuIndex = (menuIndex + 1) % 3;
+        drawMenuNavigation();
+        lastMenuAction = millis();
+    }
+    
+    // Select menu item
+    if (buttonLow.isPressed()) {
+        buttonPressTime = millis();
+        lastMenuAction = millis();
+    }
+    
+    if (buttonLow.isReleased()) {
+        unsigned long pressDuration = millis() - buttonPressTime;
         
-        // Select menu item
-        if (buttonLow.isPressed()) {
-            lastMenuAction = millis();
-        }
-        
-        if (buttonLow.isReleased()) {
-            unsigned long pressDuration = millis() - lastMenuAction;
-            
-            if (pressDuration > DabAlarmConfig::InteractionSettings::LONG_PRESS_DURATION) {
-                // Long press - return to main screen
-                currentMenu = MenuState::MAIN_SCREEN;
-                drawMainScreen();
-            } else {
-                // Short press - select menu item
-                switch (menuIndex) {
-                    case 0:
-                        currentMenu = MenuState::SET_DAB_TEMP;
-                        drawTempAdjustScreen(state.dabTemp, true);
-                        break;
-                    case 1:
-                        currentMenu = MenuState::SET_DUNK_TEMP;
-                        drawTempAdjustScreen(state.dunkTemp, false);
-                        break;
-                    case 2:
-                        currentMenu = MenuState::TOGGLE_MUTE;
-                        drawMuteToggleScreen();
-                        break;
-                }
+        if (pressDuration > DabAlarmConfig::InteractionSettings::LONG_PRESS_DURATION) {
+            // Long press DOWN - return to main screen
+            currentMenu = MenuState::MAIN_SCREEN;
+            drawMainScreen();
+        } else {
+            // Short press - select menu item
+            switch (menuIndex) {
+                case 0:
+                    currentMenu = MenuState::SET_DAB_TEMP;
+                    drawTempAdjustScreen(state.dabTemp, true);
+                    break;
+                case 1:
+                    currentMenu = MenuState::SET_DUNK_TEMP;
+                    drawTempAdjustScreen(state.dunkTemp, false);
+                    break;
+                case 2:
+                    currentMenu = MenuState::TOGGLE_MUTE;
+                    drawMuteToggleScreen();
+                    break;
             }
         }
     }
+}
 
-    void handleDabTempAdjustment() {
-        if (buttonUp.isPressed()) {
-            state.dabTemp = min(
-                state.dabTemp + DabAlarmConfig::TemperatureSettings::TEMP_STEP, 
-                DabAlarmConfig::TemperatureSettings::MAX_TEMP
+void handleDabTempAdjustment() {
+    static bool settingChanged = false;
+    static unsigned long lastChangeTime = 0;
+
+    unsigned long currentTime = millis();
+
+    // Add a minimum interval between changes
+    if (currentTime - lastChangeTime < 200) {
+        return;  // Prevent rapid successive changes
+    }
+
+
+    if (buttonUp.isPressed()) {
+        state.dabTemp = min(
+            state.dabTemp + DabAlarmConfig::TemperatureSettings::TEMP_STEP, 
+            DabAlarmConfig::TemperatureSettings::MAX_TEMP
+        );
+        saveTemperature(
+            DabAlarmConfig::EEPROMAddresses::DAB_TEMP_ADDR, 
+            state.dabTemp
+        );
+        drawTempAdjustScreen(state.dabTemp, false);
+        lastMenuAction = millis();
+        
+    }
+    
+    if (buttonLow.isPressed()) {
+        buttonPressTime = millis();
+    }
+    
+    if (buttonLow.isReleased()) {
+        unsigned long pressDuration = millis() - buttonPressTime;
+        
+        if (pressDuration > DabAlarmConfig::InteractionSettings::LONG_PRESS_DURATION) {
+            // Long press to exit
+            currentMenu = MenuState::MAIN_SCREEN;
+            drawMainScreen();
+        } else if (!settingChanged) {
+            // Short press to decrease only if no previous setting change
+            state.dabTemp = max(
+                state.dabTemp - DabAlarmConfig::TemperatureSettings::TEMP_STEP, 
+                DabAlarmConfig::TemperatureSettings::MIN_TEMP
             );
             saveTemperature(
                 DabAlarmConfig::EEPROMAddresses::DAB_TEMP_ADDR, 
                 state.dabTemp
             );
-            drawTempAdjustScreen(state.dabTemp, true);
+            drawTempAdjustScreen(state.dabTemp, false);
             lastMenuAction = millis();
         }
         
-        if (buttonLow.isPressed()) {
-            lastMenuAction = millis();
-        }
-        
-        if (buttonLow.isReleased()) {
-            unsigned long pressDuration = millis() - lastMenuAction;
-            
-            if (pressDuration > DabAlarmConfig::InteractionSettings::LONG_PRESS_DURATION) {
-                currentMenu = MenuState::MAIN_SCREEN;
-                drawMainScreen();
-            } else {
-                state.dabTemp = max(
-                    state.dabTemp - DabAlarmConfig::TemperatureSettings::TEMP_STEP, 
-                    DabAlarmConfig::TemperatureSettings::MIN_TEMP
-                );
-                saveTemperature(
-                    DabAlarmConfig::EEPROMAddresses::DAB_TEMP_ADDR, 
-                    state.dabTemp
-                );
-                drawTempAdjustScreen(state.dabTemp, true);
-            }
-            lastMenuAction = millis();
-        }
+        // Reset the change flag
+        settingChanged = false;
     }
+}
+void handleDunkTempAdjustment() {
+    static bool settingChanged = false;
+    
 
-    void handleDunkTempAdjustment() {
-        if (buttonUp.isPressed()) {
-            state.dunkTemp = min(
-                state.dunkTemp + DabAlarmConfig::TemperatureSettings::TEMP_STEP, 
-                DabAlarmConfig::TemperatureSettings::MAX_TEMP
+    if (buttonUp.isPressed()) {
+        state.dunkTemp = min(
+            state.dunkTemp + DabAlarmConfig::TemperatureSettings::TEMP_STEP, 
+            DabAlarmConfig::TemperatureSettings::MAX_TEMP
+        );
+        saveTemperature(
+            DabAlarmConfig::EEPROMAddresses::DUNK_TEMP_ADDR, 
+            state.dunkTemp
+        );
+        drawTempAdjustScreen(state.dunkTemp, false);
+        lastMenuAction = millis();
+        settingChanged = false;
+    }
+    
+    if (buttonLow.isPressed()) {
+        buttonPressTime = millis();
+    }
+    
+    if (buttonLow.isReleased()) {
+        unsigned long pressDuration = millis() - buttonPressTime;
+        
+        if (pressDuration > DabAlarmConfig::InteractionSettings::LONG_PRESS_DURATION) {
+            // Long press to exit
+            currentMenu = MenuState::MAIN_SCREEN;
+            drawMainScreen();
+        } else if (!settingChanged) {
+            // Short press to decrease only if no previous setting change
+            state.dunkTemp = max(
+                state.dunkTemp - DabAlarmConfig::TemperatureSettings::TEMP_STEP, 
+                DabAlarmConfig::TemperatureSettings::MIN_TEMP
             );
             saveTemperature(
                 DabAlarmConfig::EEPROMAddresses::DUNK_TEMP_ADDR, 
@@ -860,82 +875,45 @@ void handleMainScreenInteraction() {
             lastMenuAction = millis();
         }
         
-        if (buttonLow.isPressed()) {
-            lastMenuAction = millis();
-        }
-        
-        if (buttonLow.isReleased()) {
-            unsigned long pressDuration = millis() - lastMenuAction;
-            
-            if (pressDuration > DabAlarmConfig::InteractionSettings::LONG_PRESS_DURATION) {
-                currentMenu = MenuState::MAIN_SCREEN;
-                drawMainScreen();
-            } else {
-                state.dunkTemp = max(
-                    state.dunkTemp - DabAlarmConfig::TemperatureSettings::TEMP_STEP, 
-                    DabAlarmConfig::TemperatureSettings::MIN_TEMP
-                );
-                saveTemperature(
-                    DabAlarmConfig::EEPROMAddresses::DUNK_TEMP_ADDR, 
-                    state.dunkTemp
-                );
-                drawTempAdjustScreen(state.dunkTemp, false);
-            }
-            lastMenuAction = millis();
-        }
+        // Reset the change flag
+        settingChanged = false;
     }
+}
 
-    void handleMuteToggle() {
-        static unsigned long buttonPressTime = 0;
-        
-        // Handle UP button
-        if (buttonUp.isPressed()) {
-            buttonPressTime = millis();
-            lastMenuAction = millis();
-        }
-        
-        if (buttonUp.isReleased()) {
-            unsigned long pressDuration = millis() - buttonPressTime;
-            
-            if (pressDuration > DabAlarmConfig::InteractionSettings::LONG_PRESS_DURATION) {
-                // Long press - exit to main screen
-                currentMenu = MenuState::MAIN_SCREEN;
-                drawMainScreen();
-            } else {
-                // Short press - toggle mute
-                state.isMuted = !state.isMuted;
-                saveMuteState(state.isMuted);
-                Serial.print("Mute toggled to: ");
-                Serial.println(state.isMuted ? "MUTED" : "UNMUTED");
-                drawMuteToggleScreen();
-                lastMenuAction = millis();
-            }
-        }
-        
-        // Handle LOW button
-        if (buttonLow.isPressed()) {
-            buttonPressTime = millis();
-            lastMenuAction = millis();
-        }
-        
-        if (buttonLow.isReleased()) {
-            unsigned long pressDuration = millis() - buttonPressTime;
-            
-            if (pressDuration > DabAlarmConfig::InteractionSettings::LONG_PRESS_DURATION) {
-                // Long press - exit to main screen
-                currentMenu = MenuState::MAIN_SCREEN;
-                drawMainScreen();
-            } else {
-                // Short press - toggle mute
-                state.isMuted = !state.isMuted;
-                saveMuteState(state.isMuted);
-                Serial.print("Mute toggled to: ");
-                Serial.println(state.isMuted ? "MUTED" : "UNMUTED");
-                drawMuteToggleScreen();
-                lastMenuAction = millis();
-            }
-        }
+void handleMuteToggle() {
+    static bool settingChanged = false;
+
+    if (buttonUp.isPressed()) {
+        state.isMuted = !state.isMuted;
+        saveMuteState(state.isMuted);
+        drawMuteToggleScreen();
+        lastMenuAction = millis();
+        settingChanged = false;
     }
+    
+    if (buttonLow.isPressed()) {
+        buttonPressTime = millis();
+    }
+    
+    if (buttonLow.isReleased()) {
+        unsigned long pressDuration = millis() - buttonPressTime;
+        
+        if (pressDuration > DabAlarmConfig::InteractionSettings::LONG_PRESS_DURATION) {
+            // Long press to exit
+            currentMenu = MenuState::MAIN_SCREEN;
+            drawMainScreen();
+        } else if (!settingChanged) {
+            // Short press only if no previous setting change
+            state.isMuted = !state.isMuted;
+            saveMuteState(state.isMuted);
+            drawMuteToggleScreen();
+            lastMenuAction = millis();
+        }
+        
+        // Reset the change flag
+        settingChanged = false;
+    }
+}
 
     // =====================================================================
     // EEPROM Helper Functions
@@ -974,18 +952,28 @@ void handleMainScreenInteraction() {
         }
     }
 
-    void saveMuteState(bool muteState) {
-        try {
-            EEPROM.put(DabAlarmConfig::EEPROMAddresses::MUTE_STATE_ADDR, muteState);
-            EEPROM.commit();
-            Serial.print("Saved mute state to EEPROM: ");
-            Serial.println(muteState ? "MUTED" : "UNMUTED");
-        } catch (...) {
-            ErrorHandler::handleCriticalError(
-                ErrorHandler::ErrorType::EEPROM_ERROR
-            );
+   void saveMuteState(bool muteState) {
+    try {
+        // Update the internal state first
+        state.isMuted = muteState;
+        
+        // Save to EEPROM
+        EEPROM.put(DabAlarmConfig::EEPROMAddresses::MUTE_STATE_ADDR, muteState);
+        EEPROM.commit();
+        
+        Serial.print("Saved mute state to EEPROM: ");
+        Serial.println(muteState ? "MUTED" : "UNMUTED");
+        
+        // Force redraw of main screen to reflect mute state
+        if (currentMenu == MenuState::MAIN_SCREEN) {
+            drawMainScreen();
         }
+    } catch (...) {
+        ErrorHandler::handleCriticalError(
+            ErrorHandler::ErrorType::EEPROM_ERROR
+        );
     }
+}
 
     bool loadMuteState() {
         bool muteState = false;  // Default to unmuted
@@ -1003,7 +991,7 @@ void handleMainScreenInteraction() {
             return false;  // Default to unmuted on error
         }
     }
-};  // <-- IMPORTANT: Semicolon after class definition
+};
 
 // =====================================================================
 // Global Instance and Main Functions
@@ -1013,6 +1001,11 @@ DabAlarm dabAlarm;
 
 void setup() {
     dabAlarm.begin();
+}
+
+void loop() {
+    dabAlarm.update();
+     
 }
 
 void loop() {

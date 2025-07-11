@@ -101,27 +101,39 @@ public:
         buttonLow(DabAlarmConfig::HardwareSettings::BUTTON_LOW_PIN) {}
 
     void begin() {
-        // Initialize serial for debugging
-        Serial.begin(115200);
-        
-        // Initialize display first and keep it black
-        tft.init();
-        tft.setRotation(1);
-        tft.fillScreen(TFT_BLACK);
-        
-        // Initialize other hardware components
-        initializeHardware();
-        
-        // Load saved settings
-        loadSavedSettings();
-        
-        // Show boot screen immediately after hardware init
-        drawBootScreen();
-        delay(2500);
-        
-        // Draw main screen only after boot sequence
-        drawMainScreen();
-    }
+    // Initialize serial for debugging
+    Serial.begin(115200);
+    
+    // Initialize display first and keep it black
+    tft.init();
+    tft.setRotation(1);
+    tft.fillScreen(TFT_BLACK);
+    
+    // Set initial display settings to prevent random flashing
+    
+    
+    // Delay briefly to prevent initial screen flash
+    delay(2500);
+    
+    // Initialize other hardware components
+    initializeHardware();
+    
+    // Load saved settings
+    loadSavedSettings();
+    
+    // Clear screen completely before boot screen
+    clearScreen();
+    
+    // Show boot screen
+    drawBootScreen();
+    delay(2500);
+    
+    // Clear screen again before main screen
+    clearScreen();
+    
+    // Draw main screen
+    drawMainScreen();
+}
 
     void update() {
         // Update button states
@@ -130,17 +142,23 @@ public:
         
         // Update temperature
         static unsigned long lastTempUpdate = 0;
-        if (millis() - lastTempUpdate > 1000) {
+        if (millis() - lastTempUpdate > 500) {
             updateTemperature();
             lastTempUpdate = millis();
         }
+        static bool mainScreenInitialized = false;
         batteryfunction();
         // Handle menu and interaction
         handleMenuInteraction();
         
         // Check temperature alarms
         checkTemperatureAlarms();
-        
+
+        if (!mainScreenInitialized) {
+        drawMainScreen();
+        mainScreenInitialized = true;
+        return;  // Exit after first initialization
+    }
         // Update display if needed - only update specific parts instead of full redraw
         static int lastDisplayTemp = -1;
         static bool lastMuteState = false;
@@ -237,17 +255,12 @@ void batteryfunction() {
     int adc = analogRead(ADC_PIN);
     float batteryVoltage = ((float)adc / 4095.0) * 2.0 * 3.3 * (VREF / 1000.0);
 
-    tft.fillRect(0, DabAlarmConfig::DisplaySettings::SCREEN_HEIGHT - 20, DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 20, TFT_DARKGREY); //clear screen for battery
-    if (batteryVoltage > 4.1) {
-      tft.fillRect(4, 116, 26, 14, TFT_BLACK);
-      tft.fillRect(6, 118, 22, 10, TFT_GREEN);
-      tft.fillRect(29, 120, 3, 6, TFT_BLACK);
-      tft.setFreeFont(FF17);
-      tft.setTextColor(TFT_BLACK);
-      tft.setCursor(12, 127); // Row 6
-      
-    }
-    else {
+     
+     if (batteryVoltage > 4.1) {
+            tft.fillRect(4, 116, 26, 14, TFT_BLACK);
+            tft.fillRect(6, 118, 22, 10, TFT_GREEN);
+            tft.fillRect(29, 120, 3, 6, TFT_BLACK);
+        } else {
       batteryVoltage = constrain(batteryVoltage, 3, 4);
       float batteryPercent = +((batteryVoltage - 3) / 1) * 100;
       if (batteryPercent < 25) {
@@ -323,66 +336,60 @@ void batteryfunction() {
         tft.setCursor(20, 60);
         tft.print("Kush Effect . CO");
         tft.setCursor(30, 90);
-        tft.print("dab alarm");
+        tft.print("Dab Alarm");
     }
 
-    void drawMainScreen() {
-        clearScreen();
-        
-        // Draw top banner
-        tft.fillRect(0, 0, DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 25, TFT_BLUE);
-        
-        // Banner text - centered
-        tft.setTextColor(TFT_WHITE);
-        tft.setFreeFont(FONT_SMALL);
-        
-        String bannerText = "Kush Effect Dab Alarm";
-        int16_t textWidth = tft.textWidth(bannerText);
-        int16_t xPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - textWidth) / 2;
-        
-        tft.setCursor(xPos, 18);
-        tft.print(bannerText);
-        
-        // Draw bottom banner
-        tft.fillRect(0, DabAlarmConfig::DisplaySettings::SCREEN_HEIGHT - 20, DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 20, TFT_DARKGREY);
-        
-        // Show mute status in bottom banner if muted
-        if (state.isMuted) {
-            tft.setTextColor(TFT_RED);
-            tft.setFreeFont(FONT_SMALL);
-            String muteText = "MUTED";
-            int16_t muteWidth = tft.textWidth(muteText);
-            int16_t muteXPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - muteWidth) / 2;
-            tft.setCursor(muteXPos, DabAlarmConfig::DisplaySettings::SCREEN_HEIGHT - 5);
-            tft.print(muteText);
-        }
-        
-        // Temperature display - centered in middle area
-        tft.setFreeFont(FONT_LARGE);
-        tft.setTextColor(TFT_WHITE);
-        
-        // Calculate center position for temperature
-        String tempString = "Temp: " + String(state.currentTemp) + "F";
-        int16_t tempTextWidth = tft.textWidth(tempString);
-        int16_t tempXPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - tempTextWidth) / 2;
-        
-        tft.setCursor(tempXPos, 65);
-        tft.print("Temp: ");
-        tft.print(state.currentTemp);
-        tft.print("F");
-        
-        // Target temperatures - adjusted position
-        tft.setFreeFont(FONT_SMALL);
-        tft.setCursor(15, 90);
-        tft.print("Dab: ");
-        tft.print(state.dabTemp);
-        tft.print("F  Dunk: ");
-        tft.print(state.dunkTemp);
-        tft.print("F");
-        
-        // Status indicator - moved up above bottom banner
-        drawTemperatureStatus();
-    }
+   void drawMainScreen() {
+    clearScreen();
+    
+    // Draw top banner
+    tft.fillRect(0, 0, DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 25, TFT_BLUE);
+    
+    // Banner text - centered
+    tft.setTextColor(TFT_WHITE);
+    tft.setFreeFont(FONT_SMALL);
+    
+    String bannerText = "Kush Effect Dab Alarm";
+    int16_t textWidth = tft.textWidth(bannerText);
+    int16_t xPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - textWidth) / 2;
+    
+    tft.setCursor(xPos, 18);
+    tft.print(bannerText);
+    
+    // Draw bottom banner ALWAYS
+    tft.fillRect(0, DabAlarmConfig::DisplaySettings::SCREEN_HEIGHT - 20, 
+                 DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 20, TFT_DARKGREY);
+    
+    // Rest of the main screen drawing...
+    // (temperature display, etc.)
+    
+    // Force a complete redraw of all screen elements
+    tft.setFreeFont(FONT_LARGE);
+    tft.setTextColor(TFT_WHITE);
+    
+    String tempString = "Temp: " + String(state.currentTemp) + "F";
+    int16_t tempTextWidth = tft.textWidth(tempString);
+    int16_t tempXPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - tempTextWidth) / 2;
+    
+    tft.setCursor(tempXPos, 65);
+    tft.print(tempString);
+    
+    // Target temperatures
+    tft.setFreeFont(FONT_SMALL);
+    tft.setCursor(30, 90);
+    tft.print("Dab: ");
+    tft.print(state.dabTemp);
+    tft.print("F  Dunk: ");
+    tft.print(state.dunkTemp);
+    tft.print("F");
+    
+    // Status indicator
+    drawTemperatureStatus();
+
+    // Combine battery and mute status in bottom banner
+    updateBottomBanner();
+}
+
 
     void updateTemperatureDisplay() {
         // Clear only the temperature area
@@ -405,7 +412,7 @@ void batteryfunction() {
 
     void updateTemperatureStatus() {
         // Clear only the status area
-        tft.fillRect(10, 100, 220, 15, TFT_BLACK);
+        tft.fillRect(10, 95, 220, 20, TFT_BLACK);
         
         tft.setFreeFont(FONT_SMALL);
         
@@ -445,29 +452,52 @@ void batteryfunction() {
             tft.print("DAB READY!");
         } else if (dunkDiff <= 5) {
             tft.setTextColor(TFT_YELLOW);
-            tft.print("ALERT READY!");
+            tft.print("Dunk READY!");
         } else if (state.currentTemp > state.dabTemp + 30) {
             tft.setTextColor(TFT_RED);
             tft.print("TOO HOT");
         }
     }
 
-    void updateBottomBanner() {
-        // Clear and redraw only the bottom banner
-        tft.fillRect(0, DabAlarmConfig::DisplaySettings::SCREEN_HEIGHT - 20, DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 20, TFT_DARKGREY);
-        
-        // Show mute status if muted
-        if (state.isMuted) {
-            tft.setTextColor(TFT_RED);
-            tft.setFreeFont(FONT_SMALL);
-            String muteText = "MUTED";
-            int16_t muteWidth = tft.textWidth(muteText);
-            int16_t muteXPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - muteWidth) / 2;
-            tft.setCursor(muteXPos, DabAlarmConfig::DisplaySettings::SCREEN_HEIGHT - 5);
-            tft.print(muteText);
-        }
-    }
+   void updateBottomBanner() {
+    // Draw bottom banner ALWAYS
+    tft.fillRect(0, DabAlarmConfig::DisplaySettings::SCREEN_HEIGHT - 20, 
+                 DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 20, TFT_DARKGREY);
+    
+    // Show battery status
+    int adc = analogRead(ADC_PIN);
+    float batteryVoltage = ((float)adc / 4095.0) * 2.0 * 3.3 * (VREF / 1000.0);
+    batteryVoltage = constrain(batteryVoltage, 3, 4);
+    float batteryPercent = +((batteryVoltage - 3) / 1) * 100;
 
+    // Draw battery indicator on left side
+    tft.fillRect(4, 116, 26, 14, TFT_BLACK);
+    tft.fillRect(6, 118, 22, 10, TFT_DARKGREY);
+    
+    // Color and fill based on battery percentage
+    uint16_t batteryColor = TFT_GREEN;
+    float fillWidth = 22.0 * (batteryPercent / 100.0);
+    
+    if (batteryPercent < 25) {
+        batteryColor = TFT_RED;
+    } else if (batteryPercent < 50) {
+        batteryColor = TFT_YELLOW;
+    }
+    
+    tft.fillRect(6, 118, fillWidth, 10, batteryColor);
+    tft.fillRect(29, 120, 3, 6, TFT_BLACK);
+
+    // Show mute status on right side
+    if (state.isMuted) {
+        tft.setTextColor(TFT_RED);
+        tft.setFreeFont(FONT_SMALL);
+        String muteText = "MUTED";
+        int16_t muteWidth = tft.textWidth(muteText);
+        int16_t muteXPos = DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - muteWidth - 5;
+        tft.setCursor(muteXPos, DabAlarmConfig::DisplaySettings::SCREEN_HEIGHT - 5);
+        tft.print(muteText);
+    }
+}
     void drawMenuNavigation() {
         clearScreen();
         
@@ -476,7 +506,7 @@ void batteryfunction() {
         tft.setTextColor(TFT_WHITE);
         tft.setFreeFont(FONT_SMALL);
         
-        String instructionText = "UP: Navigate  LOW: Select";
+        String instructionText = "UP: Navigate  Down: Select";
         int16_t textWidth = tft.textWidth(instructionText);
         int16_t xPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - textWidth) / 2;
         
@@ -508,7 +538,7 @@ void batteryfunction() {
         tft.setTextColor(TFT_WHITE);
         tft.setFreeFont(FONT_SMALL);
         
-        String instructionText = "UP: +10  LOW: -10  HOLD: Exit";
+        String instructionText = "+/- 5: HOLD: Exit";
         int16_t textWidth = tft.textWidth(instructionText);
         int16_t xPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - textWidth) / 2;
         
@@ -546,9 +576,9 @@ void batteryfunction() {
         // Top banner with instructions
         tft.fillRect(0, 0, DabAlarmConfig::DisplaySettings::SCREEN_WIDTH, 25, TFT_BLUE);
         tft.setTextColor(TFT_WHITE);
-        tft.setTextSize (0.5);
+        tft.setFreeFont(FONT_SMALL);
         
-        String instructionText = "UP/LOW: Toggle  HOLD: Exit";
+        String instructionText = "UP/Down: Toggle  HOLD: Exit";
         int16_t textWidth = tft.textWidth(instructionText);
         int16_t xPos = (DabAlarmConfig::DisplaySettings::SCREEN_WIDTH - textWidth) / 2;
         
@@ -556,7 +586,7 @@ void batteryfunction() {
         tft.print(instructionText);
         
         // Content area with background
-        tft.fillRect(10, 35, 220, 80, TFT_DARKGREY);
+        tft.fillRect(10, 35, 220, 80, TFT_BLACK);
         
         // Title
         tft.setTextColor(TFT_WHITE);
@@ -694,12 +724,7 @@ void batteryfunction() {
                 currentMenu = MenuState::MENU_NAVIGATION;
                 menuIndex = 0;
                 drawMenuNavigation();
-            } else {
-                // Short press - toggle mute
-                state.isMuted = !state.isMuted;
-                saveMuteState(state.isMuted);
-                updateBottomBanner();
-            }
+            } 
         }
         
         // Handle LOW button
@@ -716,12 +741,7 @@ void batteryfunction() {
                 currentMenu = MenuState::MENU_NAVIGATION;
                 menuIndex = 0;
                 drawMenuNavigation();
-            } else {
-                // Short press - toggle mute
-                state.isMuted = !state.isMuted;
-                saveMuteState(state.isMuted);
-                updateBottomBanner();
-            }
+            } 
         }
     }
 
@@ -933,18 +953,28 @@ void batteryfunction() {
         }
     }
 
-    void saveMuteState(bool muteState) {
-        try {
-            EEPROM.put(DabAlarmConfig::EEPROMAddresses::MUTE_STATE_ADDR, muteState);
-            EEPROM.commit();
-            Serial.print("Saved mute state to EEPROM: ");
-            Serial.println(muteState ? "MUTED" : "UNMUTED");
-        } catch (...) {
-            ErrorHandler::handleCriticalError(
-                ErrorHandler::ErrorType::EEPROM_ERROR
-            );
+   void saveMuteState(bool muteState) {
+    try {
+        // Update the internal state first
+        state.isMuted = muteState;
+        
+        // Save to EEPROM
+        EEPROM.put(DabAlarmConfig::EEPROMAddresses::MUTE_STATE_ADDR, muteState);
+        EEPROM.commit();
+        
+        Serial.print("Saved mute state to EEPROM: ");
+        Serial.println(muteState ? "MUTED" : "UNMUTED");
+        
+        // Force redraw of main screen to reflect mute state
+        if (currentMenu == MenuState::MAIN_SCREEN) {
+            drawMainScreen();
         }
+    } catch (...) {
+        ErrorHandler::handleCriticalError(
+            ErrorHandler::ErrorType::EEPROM_ERROR
+        );
     }
+}
 
     bool loadMuteState() {
         bool muteState = false;  // Default to unmuted

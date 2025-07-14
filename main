@@ -6,9 +6,8 @@
 #include <EEPROM.h>
 #include <stdint.h>
 
-// =====================================================================
 // Configuration and Error Handling
-// =====================================================================
+// below
 
 class DabAlarmConfig {
 public:
@@ -112,9 +111,9 @@ int voltageToPercent(float v) {
     else if (v >= 3.6)  return 5;
     else                return 0;
 }
-// =====================================================================
+
 // Main DabAlarm Class
-// =====================================================================
+// below
 
 class DabAlarm {
 public:
@@ -221,9 +220,9 @@ public:
 }
 
 private:
-    // =====================================================================
+   
     // Internal State and Components
-    // =====================================================================
+    // below
     
     struct DeviceState {
         int currentTemp = 0;
@@ -263,10 +262,8 @@ private:
     unsigned long lastMenuAction = 0;
     unsigned long buttonPressTime = 0;  // Added missing variable declaration
 
-    // =====================================================================
     // Initialization Methods
-    // =====================================================================
-
+    // below
     void initializeHardware() {
         // Initialize EEPROM
         EEPROM.begin(512);
@@ -343,9 +340,9 @@ void batteryfunction() {
         state.isMuted = loadMuteState();
     }
 
-    // =====================================================================
+
     // Display Methods
-    // =====================================================================
+    // below
 
     void clearScreen() {
         tft.fillScreen(TFT_BLACK);
@@ -624,9 +621,8 @@ else if (batteryPercent < 40)
         tft.print(statusText);
     }
 
-    // =====================================================================
     // Sound Effects (No Flashing)
-    // =====================================================================
+    // below
 
 
 
@@ -741,9 +737,9 @@ bool playDunkBeep() {
     return false;
 }
 
-    // =====================================================================
+ 
     // Temperature and Menu Management  
-    // =====================================================================
+    // below
 
     void updateTemperature() {
         if (!state.sensorConnected) return;
@@ -808,9 +804,9 @@ bool playDunkBeep() {
     }
 }
 
-    // =====================================================================
+
     // Menu Interaction Methods
-    // =====================================================================
+    // below
 
     void handleMenuInteraction() {
         switch (currentMenu) {
@@ -1039,9 +1035,9 @@ void handleMuteToggle() {
     }
 }
 
-    // =====================================================================
+   
     // EEPROM Helper Functions
-    // =====================================================================
+    // below
 
     void saveTemperature(int address, int temp) {
         try {
@@ -1117,9 +1113,9 @@ void handleMuteToggle() {
     }
 };
 
-// =====================================================================
+
 // Global Instance and Main Functions
-// =====================================================================
+// below
 
 DabAlarm dabAlarm;
 
